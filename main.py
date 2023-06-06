@@ -6,7 +6,7 @@ from panda3d.core import VirtualFileSystem
 from panda3d.core import Multifile
 from panda3d.core import Filename, StringStream
 
-import mmd.loader as pmd
+import mmd.loader as loader
 
 class App(ShowBase):
     # コンストラクタ
@@ -33,7 +33,8 @@ class App(ShowBase):
         self.axis.setScale(1.5)
         self.axis.reparentTo(self.render)
 
-        ret = pmd.load('dist/miku/Lat式ミクVer2.31_Normal.pmd')
+        #ret = loader.load('dist/miku/Lat式ミクVer2.31_Normal.pmd')
+        ret = loader.load('dist/alicia/Alicia_solid.pmx')
         for vertice in ret.vertices:
             sphere = self.loader.loadModel("models/misc/sphere")
             sphere.reparentTo(self.render)

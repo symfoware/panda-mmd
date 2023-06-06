@@ -1,4 +1,5 @@
 import io
+import os
 import struct
 
 class ddict(dict): 
@@ -90,7 +91,7 @@ class DataView(object):
             a.append(self.get_float64())
         return a
 
-    def get_index(self, itype, unsigned):
+    def get_index(self, itype, unsigned=False):
         if itype ==1:
             if unsigned:
                 return self.get_uint8()
@@ -104,7 +105,7 @@ class DataView(object):
         
         raise KeyError('unknown number type %d exception.!' % itype)
         
-    def get_index_array(self, itype, size, unsigned):
+    def get_index_array(self, itype, size, unsigned=False):
         a = []
         for i in range(size):
             a.append(self.get_index(itype, unsigned))
@@ -152,14 +153,15 @@ class DataView(object):
             self.get_uint8()
             size -= 1
 
-        return chars.decode('utf-8')
+        return chars.decode('utf-16')
 
     def get_text_buffer(self):
         size = self.get_uint32()
         return self.get_unicode_strings(size)
 
 
-def load_pmd(dv):
+# parse pmd format file
+def parse_pmd(dv):
     pmd = ddict()
     metadata = ddict()
     pmd.metadata = metadata
@@ -447,11 +449,385 @@ def load_pmd(dv):
     parse_rigid_bodies()
     parse_constraints()
 
-    #print(pmd.metadata)
-
     return pmd
     
 
+
+# parse pmx format file
+def parse_pmx(dv):
+
+    pmx = ddict()
+    metadata = ddict()
+    pmx.metadata = metadata
+    pmx.metadata.format = 'pmx'
+    pmx.metadata.coordinateSystem = 'left'
+
+    def parse_header():
+        metadata.magic = dv.get_chars(4).strip()
+        if metadata.magic != 'PMX':
+            raise ValueError('PMX file magic is not PMX, but %s' % (metadata.magic))
+
+        metadata.version = dv.get_float32()
+        if metadata.version != 2.0 and metadata.version != 2.1:
+            raise ValueError('PMX version %.2f is not supported.' % (metadata.version))
+
+        metadata.headerSize = dv.get_uint8()
+        metadata.encoding = dv.get_uint8()
+        metadata.additionalUvNum = dv.get_uint8()
+        metadata.vertexIndexSize = dv.get_uint8()
+        metadata.textureIndexSize = dv.get_uint8()
+        metadata.materialIndexSize = dv.get_uint8()
+        metadata.boneIndexSize = dv.get_uint8()
+        metadata.morphIndexSize = dv.get_uint8()
+        metadata.rigidBodyIndexSize = dv.get_uint8()
+        metadata.modelName = dv.get_text_buffer()
+        metadata.englishModelName = dv.get_text_buffer()
+        metadata.comment = dv.get_text_buffer()
+        metadata.englishComment = dv.get_text_buffer()
+
+
+    def parse_vertices():
+        def parse_vertex():
+            p = ddict()
+            p.position = dv.get_float32_array(3)
+            p.normal = dv.get_float32_array(3)
+            p.uv = dv.get_float32_array(2)
+            
+            p.auvs = []
+            for i in range(metadata.additionalUvNum):
+                p.auvs.append( dv.get_float32_array(4) )
+
+            p.type = dv.get_uint8()
+            index_size = metadata.boneIndexSize
+            if p.type == 0: # BDEF1
+                p.skinIndices = dv.get_index_array(index_size, 1)
+                p.skinWeights = [ 1.0 ]
+
+            elif p.type == 1: # BDEF2
+                p.skinIndices = dv.get_index_array(index_size, 2 )
+                p.skinWeights = dv.get_float32_array(1)
+                p.skinWeights.append( 1.0 - p.skinWeights[0] )
+
+            elif p.type == 2: # BDEF4
+                p.skinIndices = dv.get_index_array(index_size, 4)
+                p.skinWeights = dv.get_float32_array(4)
+
+            elif p.type == 3: # SDEF
+
+                p.skinIndices = dv.get_index_array(index_size, 2)
+                p.skinWeights = dv.get_float32_array(1)
+                p.skinWeights.append( 1.0 - p.skinWeights[0] )
+
+                p.skinC = dv.get_float32_array(3)
+                p.skinR0 = dv.get_float32_array(3)
+                p.skinR1 = dv.get_float32_array(3)
+
+                # SDEF is not supported yet and is handled as BDEF2 so far.
+                # TODO: SDEF support
+                p.type = 1
+
+            else:
+                raise ValueError('unsupport bone type %d exception.' % (p.type))
+
+            p.edgeRatio = dv.get_float32()
+            return p
+
+        metadata.vertexCount = dv.get_uint32()
+        pmx.vertices = []
+        for i in range(metadata.vertexCount):
+            pmx.vertices.append( parse_vertex() )
+
+
+    def parse_faces():
+        def parse_face():
+            p = ddict()
+            p.indices = dv.get_index_array(metadata.vertexIndexSize, 3, True)
+            return p
+
+        metadata.faceCount = int(dv.get_uint32() / 3)
+        pmx.faces = []
+        for i in range(metadata.faceCount):
+            pmx.faces.append( parse_face() )
+
+
+    def parse_textures():
+        def parse_texture():
+            return dv.get_text_buffer()
+
+        metadata.textureCount = dv.get_uint32()
+        pmx.textures = []
+        for i in range(metadata.textureCount):
+            pmx.textures.append( parse_texture() )
+
+
+    def parse_materials():
+        def parse_material():
+            p = ddict()
+            p.name = dv.get_text_buffer()
+            p.englishName = dv.get_text_buffer()
+            p.diffuse = dv.get_float32_array(4)
+            p.specular = dv.get_float32_array(3)
+            p.shininess = dv.get_float32()
+            p.ambient = dv.get_float32_array(3)
+            p.flag = dv.get_uint8()
+            p.edgeColor = dv.get_float32_array(4)
+            p.edgeSize = dv.get_float32()
+            p.textureIndex = dv.get_index(metadata.textureIndexSize)
+            p.envTextureIndex = dv.get_index(metadata.textureIndexSize)
+            p.envFlag = dv.get_uint8()
+            p.toonFlag = dv.get_uint8()
+
+            if p.toonFlag == 0:
+                p.toonIndex = dv.get_index(metadata.textureIndexSize)
+
+            elif p.toonFlag == 1:
+                p.toonIndex = dv.get_int8()
+
+            else:
+                raise ValueError('unknown toon flag %d exception.' % (p.toonFlag))
+
+            p.comment = dv.get_text_buffer()
+            p.faceCount = int(dv.get_uint32() / 3)
+            return p
+
+        metadata.materialCount = dv.get_uint32()
+        pmx.materials = []
+        for i in range(metadata.materialCount):
+            pmx.materials.append( parse_material() )
+
+
+    def parse_bones():
+        def parse_bone():
+            p = ddict()
+            p.name = dv.get_text_buffer()
+            p.englishName = dv.get_text_buffer()
+            p.position = dv.get_float32_array(3)
+            p.parentIndex = dv.get_index(pmx.metadata.boneIndexSize)
+            p.transformationClass = dv.get_uint32()
+            p.flag = dv.get_uint16()
+
+            if p.flag & 0x1:
+                p.connectIndex = dv.get_index(pmx.metadata.boneIndexSize)
+
+            else:
+                p.offsetPosition = dv.get_float32_array(3)
+
+
+            if p.flag & 0x100 or p.flag & 0x200: # 回転、移動付与
+                grant = ddict()
+
+                grant.isLocal = True if p.flag & 0x80 else False
+                grant.affectRotation = True if p.flag & 0x100 else False
+                grant.affectPosition = True if p.flag & 0x2000 else False
+                grant.parentIndex = dv.get_index(metadata.boneIndexSize)
+                grant.ratio = dv.get_float32()
+
+                p.grant = grant
+
+
+            if p.flag & 0x400: # 軸固定
+                p.fixAxis = dv.get_float32_array(3)
+
+            if p.flag & 0x800: # ローカル軸
+                p.localXVector = dv.get_float32_array(3)
+                p.localZVector = dv.get_float32_array(3)
+
+            if p.flag & 0x2000: # 外部親変形
+                p.key = dv.get_uint32()
+
+            if p.flag & 0x20: # IK
+                ik = ddict()
+
+                ik.effector = dv.get_index(metadata.boneIndexSize)
+                ik.target = None
+                ik.iteration = dv.get_uint32()
+                ik.maxAngle = dv.get_float32()
+                ik.linkCount = dv.get_uint32()
+                ik.links = []
+                for i in range(ik.linkCount):
+                    link = ddict()
+                    link.index = dv.get_index(metadata.boneIndexSize)
+                    link.angleLimitation = dv.get_uint8()
+
+                    if link.angleLimitation == 1:
+                        link.lowerLimitationAngle = dv.get_float32_array(3)
+                        link.upperLimitationAngle = dv.get_float32_array(3)
+
+                    ik.links.append( link )
+
+                p.ik = ik
+
+            return p
+
+        metadata.boneCount = dv.get_uint32()
+        pmx.bones = []
+        for i in range(metadata.boneCount):
+            pmx.bones.append( parse_bone() )
+
+
+    def parse_morphs():
+        def parse_morph():
+            p = ddict()
+            p.name = dv.get_text_buffer()
+            p.englishName = dv.get_text_buffer()
+            p.panel = dv.get_uint8()
+            p.type = dv.get_uint8()
+            p.elementCount = dv.get_uint32()
+            p.elements = []
+
+            for i in range(p.elementCount):
+                if p.type == 0: # group morph
+                    m = ddict()
+                    m.index = dv.get_index(metadata.morphIndexSize)
+                    m.ratio = dv.get_float32()
+                    p.elements.append(m)
+
+                elif p.type == 1: # vertex morph
+                    m = ddict()
+                    m.index = dv.get_index(metadata.vertexIndexSize, True)
+                    m.position = dv.get_float32_array(3)
+                    p.elements.append(m)
+
+                elif p.type == 2: # bone morph
+                    m = ddict()
+                    m.index = dv.get_index(metadata.boneIndexSize)
+                    m.position = dv.get_float32_array(3)
+                    m.rotation = dv.get_float32_Aarray(4)
+                    p.elements.append(m)
+
+                elif p.type == 3: # uv morph
+                    m = ddict()
+                    m.index = dv.get_index(metadata.vertexIndexSize, True)
+                    m.uv = dv.get_float32_array(4)
+                    p.elements.append(m)
+
+                elif p.type == 4: # additional uv1
+                    # TODO: implement
+                    pass
+
+                elif p.type == 5: # additional uv2
+                    # TODO: implement
+                    pass
+
+                elif p.type == 6: # additional uv3
+                    # TODO: implement
+                    pass
+
+                elif p.type == 7: # additional uv4
+                    # TODO: implement
+                    pass
+
+                elif p.type == 8: # material morph
+                    m = ddict()
+                    m.index = dv.get_index(metadata.materialIndexSize)
+                    m.type = dv.get_uint8()
+                    m.diffuse = dv.get_float32_array(4)
+                    m.specular = dv.get_float32_array(3)
+                    m.shininess = dv.get_float32()
+                    m.ambient = dv.get_float32_array(3)
+                    m.edgeColor = dv.get_float32_array(4)
+                    m.edgeSize = dv.get_float32()
+                    m.textureColor = dv.get_float32_array(4)
+                    m.sphereTextureColor = dv.get_float32_array(4)
+                    m.toonColor = dv.get_float32_array(4)
+                    p.elements.append(m)
+
+            return p
+
+        metadata.morphCount = dv.get_uint32()
+        pmx.morphs = []
+        for i in range(metadata.morphCount):
+            pmx.morphs.append( parse_morph() )
+
+
+    def parse_frames():
+        def parse_frame():
+            p = ddict()
+            p.name = dv.get_text_buffer()
+            p.englishName = dv.get_text_buffer()
+            p.type = dv.get_uint8()
+            p.elementCount = dv.get_uint32()
+            p.elements = []
+
+            for i in range(p.elementCount):
+                e = ddict()
+                e.target = dv.get_uint8()
+                e.index = dv.get_index(metadata.boneIndexSize) if e.target == 0 else dv.get_index(metadata.morphIndexSize)
+                p.elements.append(e)
+
+            return p
+
+        metadata.frameCount = dv.get_uint32()
+        pmx.frames = []
+        for i in range(metadata.frameCount):
+            pmx.frames.append( parse_frame() )
+
+
+
+    def parse_rigid_bodies():
+        def parse_rigid_body():
+            p = ddict()
+            p.name = dv.get_text_buffer()
+            p.englishName = dv.get_text_buffer()
+            p.boneIndex = dv.get_index(metadata.boneIndexSize)
+            p.groupIndex = dv.get_uint8()
+            p.groupTarget = dv.get_uint16()
+            p.shapeType = dv.get_uint8()
+            p.width = dv.get_float32()
+            p.height = dv.get_float32()
+            p.depth = dv.get_float32()
+            p.position = dv.get_float32_array(3)
+            p.rotation = dv.get_float32_array(3)
+            p.weight = dv.get_float32()
+            p.positionDamping = dv.get_float32()
+            p.rotationDamping = dv.get_float32()
+            p.restitution = dv.get_float32()
+            p.friction = dv.get_float32()
+            p.type = dv.get_uint8()
+            return p
+
+        metadata.rigidBodyCount = dv.get_uint32()
+        pmx.rigidBodies = []
+        for i in range(metadata.rigidBodyCount):
+            pmx.rigidBodies.append( parse_rigid_body() )
+
+
+    def parse_constraints():
+        def parse_constraint():
+            p = ddict()
+            p.name = dv.get_text_buffer()
+            p.englishName = dv.get_text_buffer()
+            p.type = dv.get_uint8()
+            p.rigidBodyIndex1 = dv.get_index(metadata.rigidBodyIndexSize)
+            p.rigidBodyIndex2 = dv.get_index(metadata.rigidBodyIndexSize)
+            p.position = dv.get_float32_array(3)
+            p.rotation = dv.get_float32_array(3)
+            p.translationLimitation1 = dv.get_float32_array(3)
+            p.translationLimitation2 = dv.get_float32_array(3)
+            p.rotationLimitation1 = dv.get_float32_array(3)
+            p.rotationLimitation2 = dv.get_float32_array(3)
+            p.springPosition = dv.get_float32_array(3)
+            p.springRotation = dv.get_float32_array(3)
+            return p
+
+        metadata.constraintCount = dv.get_uint32()
+        pmx.constraints = []
+        for i in range(metadata.constraintCount):
+            pmx.constraints.append( parse_constraint() )
+
+
+    parse_header()
+    parse_vertices()
+    parse_faces()
+    parse_textures()
+    parse_materials()
+    parse_bones()
+    parse_morphs()
+    parse_frames()
+    parse_rigid_bodies()
+    parse_constraints()
+
+    return pmx
 
     
 
@@ -460,9 +836,14 @@ def load(file):
     with open(file, 'rb') as f:
         dv = DataView(f.read())
 
-    return load_pmd(dv)
+    head = dv.get_chars(3)
+    dv.buffer.seek(0)
+    
+    if 'Pmd' == head:
+        return parse_pmd(dv)
+    elif 'PMX' == head:
+        return parse_pmx(dv)
+
+    return None
 
 
-
-if __name__ == '__main__':
-    load('miku/Lat式ミクVer2.31_Normal.pmd')
