@@ -1,5 +1,4 @@
 import io
-import os
 import struct
 
 class ddict(dict): 
@@ -122,6 +121,7 @@ class DataView(object):
 
         while (size > 0):
             self.get_uint8()
+            size -= 1
         
         return str
 
@@ -486,7 +486,7 @@ def parse_pmx(dv):
         metadata.englishComment = dv.get_text_buffer()
 
 
-    def parse_vertices():
+    def parse_vertices(): # Vertex
         def parse_vertex():
             p = ddict()
             p.position = dv.get_float32_array(3)
@@ -538,7 +538,7 @@ def parse_pmx(dv):
             pmx.vertices.append( parse_vertex() )
 
 
-    def parse_faces():
+    def parse_faces(): # Faces
         def parse_face():
             p = ddict()
             p.indices = dv.get_index_array(metadata.vertexIndexSize, 3, True)
@@ -550,7 +550,7 @@ def parse_pmx(dv):
             pmx.faces.append( parse_face() )
 
 
-    def parse_textures():
+    def parse_textures(): # Textures
         def parse_texture():
             return dv.get_text_buffer()
 
@@ -560,7 +560,7 @@ def parse_pmx(dv):
             pmx.textures.append( parse_texture() )
 
 
-    def parse_materials():
+    def parse_materials(): # Material
         def parse_material():
             p = ddict()
             p.name = dv.get_text_buffer()
@@ -596,7 +596,7 @@ def parse_pmx(dv):
             pmx.materials.append( parse_material() )
 
 
-    def parse_bones():
+    def parse_bones(): # Bone
         def parse_bone():
             p = ddict()
             p.name = dv.get_text_buffer()
@@ -665,7 +665,7 @@ def parse_pmx(dv):
             pmx.bones.append( parse_bone() )
 
 
-    def parse_morphs():
+    def parse_morphs(): # モーフ
         def parse_morph():
             p = ddict()
             p.name = dv.get_text_buffer()
@@ -740,7 +740,7 @@ def parse_pmx(dv):
             pmx.morphs.append( parse_morph() )
 
 
-    def parse_frames():
+    def parse_frames(): # 表示枠
         def parse_frame():
             p = ddict()
             p.name = dv.get_text_buffer()
@@ -764,7 +764,7 @@ def parse_pmx(dv):
 
 
 
-    def parse_rigid_bodies():
+    def parse_rigid_bodies(): # 剛体
         def parse_rigid_body():
             p = ddict()
             p.name = dv.get_text_buffer()
@@ -792,7 +792,7 @@ def parse_pmx(dv):
             pmx.rigidBodies.append( parse_rigid_body() )
 
 
-    def parse_constraints():
+    def parse_constraints(): # ジョイント
         def parse_constraint():
             p = ddict()
             p.name = dv.get_text_buffer()
@@ -829,21 +829,172 @@ def parse_pmx(dv):
 
     return pmx
 
+
+# parse vmd format file
+def parse_vmd(dv):
+    vmd = ddict()
+    metadata = ddict()
+    vmd.metadata = metadata
+    vmd.metadata.coordinateSystem = 'left'
+
+    def parse_header():
+        metadata.magic = dv.get_chars(30)
+        if metadata.magic != 'Vocaloid Motion Data 0002':
+            raise ValueError('VMD file magic is not Vocaloid Motion Data 0002, but %s' % (metadata.magic))
+
+        metadata.name = dv.get_sjis_strings(20)
+
+    
+    def parse_motions():
+        def parse_motion():
+            p = ddict()
+            p.boneName = dv.get_sjis_strings(15)
+            p.frameNum = dv.get_uint32()
+            p.position = dv.get_float32_array(3)
+            p.rotation = dv.get_float32_array(4)
+            p.interpolation = dv.get_uint8_array(64)
+            return p
+
+        metadata.motionCount = dv.get_uint32()
+        vmd.motions = []
+        for i in range(metadata.motionCount):
+            vmd.motions.append( parse_motion() )
+
+
+    def parse_morphs():
+        def parse_morph():
+            p = ddict()
+            p.morphName = dv.get_sjis_strings(15)
+            p.frameNum = dv.get_uint32()
+            p.weight = dv.get_float32()
+            return p
+
+        metadata.morphCount = dv.get_uint32()
+        vmd.morphs = []
+        for i in range(metadata.morphCount):
+            vmd.morphs.append( parse_morph() )
+
+    def parse_cameras():
+        def parse_camera():
+            p = ddict()
+            p.frameNum = dv.get_uint32()
+            p.distance = dv.get_float32()
+            p.position = dv.get_float32_array(3)
+            p.rotation = dv.get_float32_array(3)
+            p.interpolation = dv.get_uint8_array(24)
+            p.fov = dv.get_uint32()
+            p.perspective = dv.get_uint8()
+            return p
+
+        metadata.cameraCount = dv.get_uint32()
+        vmd.cameras = []
+        for i in range(metadata.cameraCount):
+            vmd.cameras.push( parse_camera() )
+
+    parse_header()
+    parse_motions()
+    parse_morphs()
+    parse_cameras()
+
+    return vmd
+
     
 
+def parse_vpd(dv, encode='ms932'):
+    import re
+    text = dv.buffer.read().decode(encode)
+    text = re.sub(';.*', '', text)
+    lines = re.split('\r|\n|\r\n', text)
 
-def load(file):
+    vpd = ddict()
+    metadata = ddict()
+    vpd.metadata = metadata
+    vpd.bones = []
+
+    def check_magic():
+        if lines[ 0 ] != 'Vocaloid Pose Data file':
+            raise ValueError('the file seems not vpd file.')
+
+    def parse_header():
+        if len(lines) < 4:
+            raise ValueError('the file seems not vpd file.')
+
+        metadata.parentFile = lines[2]
+        metadata.boneCount = int(lines[3])
+
+    def parse_bones():
+        header = re.compile(r'^\s*(Bone[0-9]+)\s*\{\s*(.*)$')
+        vector = re.compile(r'^\s*(-?[0-9]+\.[0-9]+)\s*,\s*(-?[0-9]+\.[0-9]+)\s*,\s*(-?[0-9]+\.[0-9]+)\s*')
+        quaternion = re.compile(r'^\s*(-?[0-9]+\.[0-9]+)\s*,\s*(-?[0-9]+\.[0-9]+)\s*,\s*(-?[0-9]+\.[0-9]+)\s*,\s*(-?[0-9]+\.[0-9]+)\s*')
+        footer = re.compile(r'^\s*}')
+
+        n = None
+        t = None
+        q = None
+        for line in lines[5:]:
+            if not line:
+                continue
+            
+            if not n:
+                m = header.match(line)
+                if not m:
+                    raise ValueError('the file seems not vpd file.')
+
+                n = m.groups()[1]
+                continue
+                
+            if not t:
+                m = vector.match(line)
+                if not m:
+                    raise ValueError('the file seems not vpd file.')
+                
+                t = [ float(f) for f in m.groups() ]
+                continue
+
+            if not q:
+                m = quaternion.match(line)
+                if not m:
+                    raise ValueError('the file seems not vpd file.')
+                
+                q = [ float(f) for f in m.groups() ]
+                continue
+            
+            if not footer.match(line):
+                raise ValueError('the file seems not vpd file.')
+
+            vpd.bones.append(ddict({
+                'name': n,
+                'translation': t,
+                'quaternion': q
+            }))
+            n = None
+            t = None
+            q = None
+
+
+    check_magic()
+    parse_header()
+    parse_bones()
+
+    return vpd
+
+
+def load(file, format=None, encode='ms932'):
     with open(file, 'rb') as f:
         dv = DataView(f.read())
 
-    head = dv.get_chars(3)
-    dv.buffer.seek(0)
+    if not format:
+        format = file.split('.')[-1].upper()
     
-    if 'Pmd' == head:
+    if 'PMD' == format:
         return parse_pmd(dv)
-    elif 'PMX' == head:
+    elif 'PMX' == format:
         return parse_pmx(dv)
+    elif 'VMD' == format:
+        return parse_vmd(dv)
+    elif 'VPD' == format:
+        return parse_vpd(dv, encode)
 
-    return None
+    raise ValueError('Unknown format %s.' % (format))
 
 
