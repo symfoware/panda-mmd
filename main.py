@@ -22,10 +22,10 @@ class App(ShowBase):
         self.setBackgroundColor(0, 0, 0)
 
         # マウス操作を禁止
-        #self.disableMouse()
+        self.disableMouse()
         # カメラの設定
-        self.camera.setPos(-20, -100, 0)
-        self.camera.lookAt(0, 0, 0)
+        self.camera.setPos(0, -50, 10)
+        #self.camera.lookAt(0, 0, 0)
 
         # 座標軸
         self.axis = self.loader.loadModel('models/zup-axis')
@@ -34,12 +34,19 @@ class App(ShowBase):
         self.axis.reparentTo(self.render)
 
         #ret = loader.load('dist/miku/Lat式ミクVer2.31_Normal.pmd')
-        ret = loader.load('dist/alicia/Alicia_solid.pmx')
+        #ret = loader.load('dist/alicia/Alicia_solid.pmx')
+        """
         for vertice in ret.vertices:
             sphere = self.loader.loadModel("models/misc/sphere")
             sphere.reparentTo(self.render)
             sphere.setScale(0.1, 0.1, 0.1)
             sphere.setPos(vertice.position[0], vertice.position[2], vertice.position[1])
+        """
+
+        self.cube1 = self.loader.loadModel('dist/test.egg')
+        self.cube1.setPos(0, 0, 0)
+        #self.cube1.setScale(5)
+        self.cube1.reparentTo(self.render)
 
 
         
