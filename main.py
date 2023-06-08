@@ -7,6 +7,7 @@ from panda3d.core import Multifile
 from panda3d.core import Filename, StringStream
 
 import mmd.loader as loader
+import mmd.converter as converter
 
 class App(ShowBase):
     # コンストラクタ
@@ -22,7 +23,7 @@ class App(ShowBase):
         self.setBackgroundColor(0, 0, 0)
 
         # マウス操作を禁止
-        self.disableMouse()
+        #self.disableMouse()
         # カメラの設定
         self.camera.setPos(0, -50, 10)
         #self.camera.lookAt(0, 0, 0)
@@ -32,7 +33,7 @@ class App(ShowBase):
         self.axis.setPos(0, 0, 0)
         self.axis.setScale(1.5)
         self.axis.reparentTo(self.render)
-
+        
         #ret = loader.load('dist/miku/Lat式ミクVer2.31_Normal.pmd')
         #ret = loader.load('dist/alicia/Alicia_solid.pmx')
         """
@@ -43,10 +44,12 @@ class App(ShowBase):
             sphere.setPos(vertice.position[0], vertice.position[2], vertice.position[1])
         """
 
-        self.cube1 = self.loader.loadModel('dist/test.egg')
-        self.cube1.setPos(0, 0, 0)
+        self.model = self.loader.loadModel('dist/miku/test.egg')
+        #self.model = self.loader.loadModel('models/cmss12.egg')
+        
+        #self.model.setPos(0, 0, 0)
         #self.cube1.setScale(5)
-        self.cube1.reparentTo(self.render)
+        self.model.reparentTo(self.render)
 
 
         
