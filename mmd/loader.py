@@ -138,7 +138,7 @@ class DataView(object):
             self.get_uint8()
             size -= 1
 
-        return chars.decode('ms932')
+        return chars.decode('cp932')
 
     def get_unicode_strings(self, size):
         chars = b''
@@ -334,6 +334,7 @@ def parse_pmd(dv):
         def parse_english_bone_name():
             p = ddict()
             p.name = dv.get_sjis_strings(20)
+            return p
 
         if not metadata.englishCompatibility:
             return
@@ -353,7 +354,7 @@ def parse_pmd(dv):
             return
 
         pmd.englishMorphNames = []
-        for i in range(metadata.morphCount):
+        for i in range(metadata.morphCount-1):
             pmd.englishMorphNames.append( parse_english_morph_name() )
 
 
