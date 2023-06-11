@@ -1,6 +1,6 @@
 import os
 from direct.showbase.ShowBase import ShowBase
-import panda3d.core as p3dcore
+import panda3d.core as p3d
 
 import mmd.loader
 import mmd.converter
@@ -12,7 +12,7 @@ class App(ShowBase):
         ShowBase.__init__(self)
 
         # ウインドウの設定
-        self.properties = p3dcore.WindowProperties()
+        self.properties = p3d.WindowProperties()
         self.properties.setTitle('Box model')
         self.properties.setSize(700, 700)
         self.win.requestProperties(self.properties)
@@ -27,7 +27,7 @@ class App(ShowBase):
         # 座標軸
         self.axis = self.loader.loadModel('models/zup-axis')
         self.axis.setPos(0, 0, 0)
-        self.axis.setScale(1.5)
+        self.axis.setScale(2)
         self.axis.reparentTo(self.render)
 
         mmd_model = mmd.loader.load('dist/miku/Lat式ミクVer2.31_Normal.pmd')
@@ -35,12 +35,12 @@ class App(ShowBase):
         #mmd_model = mmd.loader.load('dist/chihaya/chihaya.pmd')
         mmd_egg = mmd.converter.convert_model(mmd_model)
 
-        stream = p3dcore.StringStream()
-        mf = p3dcore.Multifile()
+        stream = p3d.StringStream()
+        mf = p3d.Multifile()
         mf.openReadWrite(stream)
 
         # 変換した内容を登録
-        egg_bytes = p3dcore.StringStream(mmd_egg.encode('utf-8'))
+        egg_bytes = p3d.StringStream(mmd_egg.encode('utf-8'))
         mf.addSubfile('model.egg', egg_bytes, 1)
         # flushを実行してバッファーの内容を確定させる
         mf.flush()
@@ -57,14 +57,14 @@ class App(ShowBase):
                     continue
                 registed.add(fileName)
                 texture = os.path.join(mmd_model.metadata.base, fileName)
-                texture_bytes = p3dcore.StringStream(open(texture, 'rb').read())
+                texture_bytes = p3d.StringStream(open(texture, 'rb').read())
                 mf.addSubfile(fileName, texture_bytes, 1)
                 mf.flush()
 
         # 仮想ファイルに/mfでマウント
-        vfs = p3dcore.VirtualFileSystem.getGlobalPtr()
-        if not vfs.mount(mf, '/mf', p3dcore.VirtualFileSystem.MFReadOnly):
-            print('error')
+        vfs = p3d.VirtualFileSystem.getGlobalPtr()
+        if not vfs.mount(mf, '/mf', p3d.VirtualFileSystem.MFReadOnly):
+            print('vfs mount error')
             return
 
         self.model = self.loader.loadModel('/mf/model.egg')
