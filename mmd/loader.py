@@ -1,4 +1,5 @@
 import io
+import os
 import struct
 
 class ddict(dict): 
@@ -8,10 +9,15 @@ class ddict(dict):
 
 class DataView(object):
     def __init__(self, data):
+        self.length = len(data)
         self.buffer = io.BytesIO(data)
 
+    def read(self, size):
+        self.length -= size
+        return self.buffer.read(size)
+
     def get_int8(self):
-        v = struct.unpack_from('b', self.buffer.read(1))
+        v = struct.unpack_from('b', self.read(1))
         return v[0]
 
     def get_int8_array(self, size):
@@ -21,7 +27,7 @@ class DataView(object):
         return a
 
     def get_uint8(self):
-        v = struct.unpack_from('B', self.buffer.read(1))
+        v = struct.unpack_from('B', self.read(1))
         return v[0]
 
     def get_uint8_array(self, size):
@@ -31,7 +37,7 @@ class DataView(object):
         return a
 
     def get_int16(self):
-        v = struct.unpack_from('h', self.buffer.read(2))
+        v = struct.unpack_from('h', self.read(2))
         return v[0]
 
     def get_int16_array(self, size):
@@ -41,7 +47,7 @@ class DataView(object):
         return a
 
     def get_uint16(self):
-        v = struct.unpack_from('H', self.buffer.read(2))
+        v = struct.unpack_from('H', self.read(2))
         return v[0]
 
     def get_uint16_array(self, size):
@@ -51,7 +57,7 @@ class DataView(object):
         return a
 
     def get_int32(self):
-        v = struct.unpack_from('i', self.buffer.read(4))
+        v = struct.unpack_from('i', self.read(4))
         return v[0]
 
     def get_int32_array(self, size):
@@ -61,7 +67,7 @@ class DataView(object):
         return a
 
     def get_uint32(self):
-        v = struct.unpack_from('I', self.buffer.read(4))
+        v = struct.unpack_from('I', self.read(4))
         return v[0]
 
     def get_uint32_array(self, size):
@@ -71,7 +77,7 @@ class DataView(object):
         return a
 
     def get_float32(self):
-        v = struct.unpack_from('f', self.buffer.read(4))
+        v = struct.unpack_from('f', self.read(4))
         return v[0]
 
     def get_float32_array(self, size):
@@ -81,7 +87,7 @@ class DataView(object):
         return a
 
     def get_float64(self):
-        v = struct.unpack_from('d', self.buffer.read(8))
+        v = struct.unpack_from('d', self.read(8))
         return v[0]
 
     def get_float64_array(self, size):
@@ -325,6 +331,10 @@ def parse_pmd(dv):
             pmd.boneFrames.append( parse_bone_frame() )
 
     def parse_english_header():
+        if not dv.length:
+            metadata.englishCompatibility = 0
+            return
+
         metadata.englishCompatibility = dv.get_uint8()
         if metadata.englishCompatibility > 0:
             metadata.englishModelName = dv.get_sjis_strings(20)
@@ -378,6 +388,9 @@ def parse_pmd(dv):
             p.fileName = dv.get_sjis_strings(100)
             return p
 
+        if not dv.length:
+            return
+
         pmd.toonTextures = []
         for i in range(10):
             pmd.toonTextures.append( parse_toon_texture() )
@@ -404,6 +417,9 @@ def parse_pmd(dv):
             p.type = dv.get_uint8()
             return p
 
+        if not dv.length:
+            return
+
         metadata.rigidBodyCount = dv.get_uint32()
         pmd.rigidBodies = []
         for i in range(metadata.rigidBodyCount):
@@ -425,6 +441,9 @@ def parse_pmd(dv):
             p.springPosition = dv.get_float32_array(3)
             p.springRotation = dv.get_float32_array(3)
             return p
+
+        if not dv.length:
+            return
 
         metadata.constraintCount = dv.get_uint32()
         pmd.constraints = []
@@ -693,7 +712,7 @@ def parse_pmx(dv):
                     m = ddict()
                     m.index = dv.get_index(metadata.boneIndexSize)
                     m.position = dv.get_float32_array(3)
-                    m.rotation = dv.get_float32_Aarray(4)
+                    m.rotation = dv.get_float32_array(4)
                     p.elements.append(m)
 
                 elif p.type == 3: # uv morph
@@ -987,15 +1006,20 @@ def load(file, format=None, encode='ms932'):
     if not format:
         format = file.split('.')[-1].upper()
     
+    loaded = None
     if 'PMD' == format:
-        return parse_pmd(dv)
+        loaded = parse_pmd(dv)
     elif 'PMX' == format:
-        return parse_pmx(dv)
+        loaded = parse_pmx(dv)
     elif 'VMD' == format:
-        return parse_vmd(dv)
+        loaded = parse_vmd(dv)
     elif 'VPD' == format:
-        return parse_vpd(dv, encode)
+        loaded = parse_vpd(dv, encode)
 
-    raise ValueError('Unknown format %s.' % (format))
+    if not loaded:
+        raise ValueError('Unknown format %s.' % (format))
+
+    loaded.metadata.base = os.path.dirname(file)
+    return loaded
 
 

@@ -1,13 +1,9 @@
+import os
 from direct.showbase.ShowBase import ShowBase
-from panda3d.core import WindowProperties
-from panda3d.core import NodePath
-from panda3d.core import Texture
-from panda3d.core import VirtualFileSystem
-from panda3d.core import Multifile
-from panda3d.core import Filename, StringStream
+import panda3d.core as p3dcore
 
-import mmd.loader as loader
-import mmd.converter as converter
+import mmd.loader
+import mmd.converter
 
 class App(ShowBase):
     # コンストラクタ
@@ -16,7 +12,7 @@ class App(ShowBase):
         ShowBase.__init__(self)
 
         # ウインドウの設定
-        self.properties = WindowProperties()
+        self.properties = p3dcore.WindowProperties()
         self.properties.setTitle('Box model')
         self.properties.setSize(700, 700)
         self.win.requestProperties(self.properties)
@@ -25,7 +21,7 @@ class App(ShowBase):
         # マウス操作を禁止
         #self.disableMouse()
         # カメラの設定
-        self.camera.setPos(0, -50, 10)
+        #self.camera.setPos(0, -50, 10)
         #self.camera.lookAt(0, 0, 0)
 
         # 座標軸
@@ -33,25 +29,49 @@ class App(ShowBase):
         self.axis.setPos(0, 0, 0)
         self.axis.setScale(1.5)
         self.axis.reparentTo(self.render)
-        
-        #ret = loader.load('dist/miku/Lat式ミクVer2.31_Normal.pmd')
-        #ret = loader.load('dist/alicia/Alicia_solid.pmx')
-        """
-        for vertice in ret.vertices:
-            sphere = self.loader.loadModel("models/misc/sphere")
-            sphere.reparentTo(self.render)
-            sphere.setScale(0.1, 0.1, 0.1)
-            sphere.setPos(vertice.position[0], vertice.position[2], vertice.position[1])
-        """
 
-        self.model = self.loader.loadModel('dist/miku/test.egg')
-        #self.model = self.loader.loadModel('models/cmss12.egg')
-        
-        #self.model.setPos(0, 0, 0)
-        #self.cube1.setScale(5)
+        mmd_model = mmd.loader.load('dist/miku/Lat式ミクVer2.31_Normal.pmd')
+        #mmd_model = mmd.loader.load('dist/miku2/miku.pmd')
+        #mmd_model = mmd.loader.load('dist/chihaya/chihaya.pmd')
+        mmd_egg = mmd.converter.convert_model(mmd_model)
+
+        stream = p3dcore.StringStream()
+        mf = p3dcore.Multifile()
+        mf.openReadWrite(stream)
+
+        # 変換した内容を登録
+        egg_bytes = p3dcore.StringStream(mmd_egg.encode('utf-8'))
+        mf.addSubfile('model.egg', egg_bytes, 1)
+        # flushを実行してバッファーの内容を確定させる
+        mf.flush()
+
+        # モデルで使用している画像をメモリーに転送
+        registed = set()
+        for material in mmd_model.materials:
+            if not material.fileName:
+                continue
+            
+            fileNames = material.fileName.split('*')
+            for fileName in fileNames:
+                if fileName in registed:
+                    continue
+                registed.add(fileName)
+                texture = os.path.join(mmd_model.metadata.base, fileName)
+                texture_bytes = p3dcore.StringStream(open(texture, 'rb').read())
+                mf.addSubfile(fileName, texture_bytes, 1)
+                mf.flush()
+
+        # 仮想ファイルに/mfでマウント
+        vfs = p3dcore.VirtualFileSystem.getGlobalPtr()
+        if not vfs.mount(mf, '/mf', p3dcore.VirtualFileSystem.MFReadOnly):
+            print('error')
+            return
+
+        self.model = self.loader.loadModel('/mf/model.egg')
+
+        # 奥向になるので180度回転し、手前(yマイナス)に向ける
+        self.model.setH(self.model, 180)
         self.model.reparentTo(self.render)
-
-
         
 
 

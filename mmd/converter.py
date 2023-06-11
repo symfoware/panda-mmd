@@ -13,19 +13,44 @@ def convert_model(model):
         raise ValueError('ファイルがpmd、pmx形式ではありません')
 
     f = io.StringIO()
-    f.write('<CoordinateSystem> { Z-Up }\n')
+    f.write('<CoordinateSystem> { y-up }\n')
+
+    materials_list = []
+    for i, material in enumerate(model.materials):
+        tref = -1
+        if material.fileName:
+            fileName = material.fileName.split('*')[0]
+            f.write('<Texture> %d { "%s"' % (i, fileName))
+            f.write('}\n')
+            tref = i
+
+        materials_list.append({'tref': tref, 'faceCount':material.faceCount})
 
     f.write('<VertexPool> mmd {\n')
     for i, vertex in enumerate(model.vertices):
         f.write('  <Vertex> %d {\n' % (i))
-        f.write('    %.11f %.11f %.11f\n' % (vertex.position[0], vertex.position[2], vertex.position[1]))
+        f.write('    %.11f %.11f %.11f\n' % (vertex.position[0], vertex.position[1], vertex.position[2]))
+        f.write('    <Normal> { %.11f %.11f %.11f }\n' % (vertex.normal[0], vertex.normal[1], vertex.normal[2]))
+        f.write('    <UV> { %.11f %.11f }\n' % (vertex.uv[0], 1-vertex.uv[1]))
         f.write('  }\n')
     
     f.write('}\n')
 
     f.write('<Group> mmd {\n')
+    current_tref = -1
     for face in model.faces:
+        tref = materials_list[0]['tref']
+        materials_list[0]['faceCount'] -= 1
+        if not materials_list[0]['faceCount']:
+            del materials_list[0]
+
+        if tref != -1:
+            current_tref = tref
+
         f.write('  <Polygon> {\n')
+        if current_tref != -1:
+            f.write('    <TRef> { %d }\n' % (current_tref))
+        f.write('    <BFace> { 0 }\n')
         f.write('    <VertexRef> { %s <Ref> { mmd } }\n' % (' '.join([str(i) for i in face.indices])))
         f.write('  }\n')
 
