@@ -33,6 +33,8 @@ class App(ShowBase):
         mmd_model = mmd.loader.load('dist/miku/Lat式ミクVer2.31_Normal.pmd')
         #mmd_model = mmd.loader.load('dist/miku2/miku.pmd')
         #mmd_model = mmd.loader.load('dist/chihaya/chihaya.pmd')
+        #mmd_model = mmd.loader.load('dist/alicia/Alicia_solid.pmx')
+        #mmd_model = mmd.loader.load('dist/luka/luka.pmx')
         mmd_egg = mmd.converter.convert_model(mmd_model)
 
         stream = p3d.StringStream()

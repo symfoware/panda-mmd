@@ -165,6 +165,9 @@ class DataView(object):
         size = self.get_uint32()
         return self.get_unicode_strings(size)
 
+    def is_empty(self):
+        return self.length == 0
+
 
 # parse pmd format file
 def parse_pmd(dv):
@@ -331,7 +334,7 @@ def parse_pmd(dv):
             pmd.boneFrames.append( parse_bone_frame() )
 
     def parse_english_header():
-        if not dv.length:
+        if dv.is_empty():
             metadata.englishCompatibility = 0
             return
 
@@ -388,7 +391,7 @@ def parse_pmd(dv):
             p.fileName = dv.get_sjis_strings(100)
             return p
 
-        if not dv.length:
+        if dv.is_empty():
             return
 
         pmd.toonTextures = []
@@ -417,7 +420,7 @@ def parse_pmd(dv):
             p.type = dv.get_uint8()
             return p
 
-        if not dv.length:
+        if dv.is_empty():
             return
 
         metadata.rigidBodyCount = dv.get_uint32()
@@ -442,7 +445,7 @@ def parse_pmd(dv):
             p.springRotation = dv.get_float32_array(3)
             return p
 
-        if not dv.length:
+        if dv.is_empty():
             return
 
         metadata.constraintCount = dv.get_uint32()
